@@ -1,0 +1,36 @@
+# this grammar parses simple math expressions like: a + 10 * (8 + 5)
+
+token var "[A-Za-z]+"
+token int "-?[0-9]+"
+token float "-?[0-9+]+\.[0-9]+"
+token whitespace "[ \s]+"
+keyword "("
+keyword ")"
+keyword "+"
+keyword "-"
+keyword "*"
+keyword "/"
+
+shorthand "NUMBER" "int|float|var"
+shorthand "EXPRESSION" "MATH_NODES|NUMBER"
+shorthand "MATH_NODES" "ADD|SUB|MUL|DIV"
+shorthand "operation" "+|-|*|/"
+
+rule ignore_whitespace (whitespace)
+    pop(1)
+
+rule math_priority (ADD|SUB, *|/, EXPRESSION)
+    pop(3); push([0][1], [0][0], [0][2], [1], [2])
+
+rule math (EXPRESSION, operation, EXPRESSION)
+    pop(3)
+    push(node(
+            pick_name([1],
+            operation,
+            MATH_NODES),
+         [1],
+         [0],
+         [2]))
+
+rule parenthesis ("(", EXPRESSION, ")")
+    pop(3); push([1])
