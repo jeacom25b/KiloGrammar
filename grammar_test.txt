@@ -1,0 +1,75 @@
+token name "[A-Za-z_]+[A-Za-z0-9_]*"
+token float "-?[0-9]+\.[0-9]+"
+token int "-?[0-9]+"
+token str "\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"
+token newline "\n"
+token whitespace "[ \t]+"
+keyword "("
+keyword ")"
+keyword "+"
+keyword "-"
+keyword "**"
+keyword "*"
+keyword "/"
+keyword "="
+keyword ","
+keyword ":"
+
+shorthand "NUMBER" "int|float"
+shorthand "EXPRESSION" "BINOPS|NUMBER|name|str"
+shorthand "BINOPS" "ADD|SUB|MUL|DIV|POW"
+shorthand "OPERATION" "+|-|*|/|**"
+
+rule ignore_whitespace (whitespace)
+    pop(1)
+
+rule math_priority (ADD|SUB, *|**|/, EXPRESSION)
+    pop(3); push([0][1], [0][0], [0][2], [1], [2])
+
+rule math (EXPRESSION, OPERATION, EXPRESSION)
+    pop(3)
+    push(node(
+            pick_name([1],
+            OPERATION,
+            BINOPS),
+         [1],
+         [0],
+         [2]))
+
+rule parenthesis ("(", EXPRESSION, ")")
+    pop(3); push([1])
+
+rule typed_name (name, name)
+    pop(2) push(node(VAR_DECL, [0], [1]))
+
+rule assign (name|VAR_DECL, =, EXPRESSION, newline|";"|name|")")
+    pop(4) push(node(ASSIGN, [1], [0], [2]), [3])
+
+rule statement (ASSIGN|VAR_DECL|EXPRESSION, newline|";"|name)
+    pop(2) push(node(STATEMENT, [0]), [1])
+
+rule func_begin (VAR_DECL, "(")
+    pop(2)
+    push(node(FUNC_BEGIN, [0], node(ARGS)))
+
+rule func_begin_expand (FUNC_BEGIN, name|VAR_DECL|ASSIGN, ","|")")
+    pop(2)
+    push_into([0][1], [1])
+    case is_name(")", [3])
+        push([2])
+
+rule func_comma_remove (FUNC_BEGIN, ",")
+    pop(1)
+
+rule func_finish (FUNC_BEGIN, ")", ":")
+    pop(2)
+    set_name(FUNCTION_DEFINITION, [0])
+
+rule func_call_begin(name, "(")
+    pop(2)
+    push(node(FUNC_CALL_BEGIN, [0], node(ARGS)))
+
+rule func_call_expand(FUNC_CALL_BEGIN, EXPRESSION, ")"|",")
+    push_into([0][1], [1])
+    pop(2)
+    push([2])

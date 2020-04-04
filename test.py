@@ -1,70 +1,3 @@
-"""
-This script is a parser for the kilogrammar language
-It compiles it into a parser by just reusing its own code
-
-
-To use it just type the command:
-python kilogrammar.py my_parser.kg -compile > output_parser.py
-
-
-to watch the parser working in interactive mode you can do:
-python kilogrammar.py my_parser.kg -interactive -color
-
-
-
-This file is quite long, to find meaningful sections, just search for
-names in this table of contents:
-
-    colors used for printing:
-        class Color
-
-    functions used to make the interactive visualization:
-        def pretty_lines
-        def pretty_print
-
-    main Node class used by the parser:
-        class Node
-
-    main Token class used by the parser:
-        class Token
-
-    class that implement tokenizing code:
-        class Tokenizer
-
-    class that implements parsing code as a stack machine:
-        class Parser
-
-    code used to simplify the implementation of new parser rules using decorators:
-        def match
-        class MatchRuleWrapper
-
-    default functions avaliable to the kilogrammar language:
-        KG_BUILTINS = "
-
-    main tokenizer loop:
-        while self.char_ptr < len(self.text):
-
-    main parser loop:
-        for name, rule in rules
-
-    Kilogrammar language parser class:
-        class KiloParser(Parser):
-
-    Kilogrammar tokenizer class:
-        class KiloTokenizer(Tokenizer):
-
-
-"""
-
-
-
-
-
-
-# this tag is used to mark the start of the section that
-# is going to be copied as a new file
-
-# TAG1: reutilize code start
 import inspect
 import os
 import re
@@ -410,7 +343,7 @@ class Parser:
                 break
 
 
-class KiloTokenizer(Tokenizer):
+class TokenizerClass(Tokenizer):
 
     last_indent = None
     indent_deltas = []
@@ -436,227 +369,24 @@ class KiloTokenizer(Tokenizer):
                 self.push_token("inconsistent_indent")
 
     rules = [["indent", r"\n([ \t]*)(?:[^ \t\n])", handle_indent],
-# TAG1: reutilize code end
+             ["name", r"[A-Za-z_]+[A-Za-z0-9_]*"],
+             ["float", r"-?[0-9]+\.[0-9]+"],
+             ["int", r"-?[0-9]+"],
+             ["str", r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"],
              ["newline", r"\n"],
-             ["string", r""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"""],
-             ["whitespace", r"[ ;\t]+"],
-             ["comment", r"#.*\n"],
-             ["integer", r"(-?[0-9]+)\b"],
-             ["rule", r"rule"],
-             ["case", r"case"],
-             ["and", r"and"],
-             ["or", r"or"],
-             ["not", r"not"],
-             ["keyword", r"keyword"],
-             ["token", r"token"],
-             ["word", r"\b[A-Za-z_]+[A-Za-z0-9_]*\b"],
-             ["name", r"[^0-9\[\]\(\);\| \t\'\"\n,#>]+"],
-             ["pipe", r"\|"],
-             ["(", r"\("],
-             [")", r"\)"],
-             ["[", r"\["],
-             ["]", r"\]"],
-             [",", r","]]
+             ["whitespace", r"[ \t]+"],
+             ["(", "\("],
+             [")", "\)"],
+             ["+", "\+"],
+             ["-", "\-"],
+             ["**", "\*\*"],
+             ["*", "\*"],
+             ["/", "\/"],
+             ["=", "\="],
+             [",", "\,"],
+             [":", "\:"],
+             ]
 
-    def preprocess(self):
-        shorthand_re = re.compile(
-            r"""shorthand\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')"""
-        )
-        new_lines = []
-        shorthands = []
-        for line in self.text.split("\n"):
-
-            for replace, to in shorthands:
-                replaced_line = line.replace(replace, to)
-                if replaced_line != line:
-                    line = replaced_line
-
-            match = shorthand_re.match(line)
-            if match:
-                shorthands.append((match[1][1:-1], match[2][1:-1]))
-                new_lines.append("".join(("# processed ", line)))
-            else:
-                new_lines.append(line)
-        self.text = "\n".join(new_lines)
-
-
-class KiloParser(Parser):
-    """
-    Implementation of the Kilogrammar parser
-    """
-    # =================================================
-    # === tokens and keywords
-    # =================================================
-
-    @match("whitespace|newline|comment")
-    def ignore(self, ig):
-        self.pop(1)
-
-    @match("token", "name|word", priority=1)
-    def token_start(self, token, name):
-        self.pop(2)
-        self.push("TOKEN_DEF_START", [name])
-
-    @match("TOKEN_DEF_START", "string", priority=1)
-    def token_def_stage_1(self, tdef, string):
-        self.pop(1)
-        tdef.contents.append(string)
-        tdef.type = "TOKEN_DEFINITION"
-
-    @match("keyword", "string", priority=1)
-    def keyword_def(self, keyword, string):
-        self.pop(2)
-        self.push("KEYWORD", [string])
-
-    # =================================================
-    # === rule definitions
-    # =================================================
-
-    @match("rule", "word")
-    def rule_name(self, rule, name):
-        self.pop(2)
-        self.push("RULE_DEF_NAME", [name])
-
-    @match("RULE_DEF_NAME", "(")
-    def rule_def_start(self, name, par):
-        self.pop(1)
-        name.contents.append(Node("MATCH_LIST", []))
-        name.type = "RULE_DEF_MATCH_LIST"
-
-    @match("RULE_DEF_MATCH_LIST", "NAME_GRP", ",|)")
-    def rule_def_extend(self, rule, names, sep):
-        self.pop(2)
-        rule.contents[1].contents.append(names)
-        self.push(sep)
-
-    @match("RULE_DEF_MATCH_LIST", ",")
-    def rule_strip_comma(self, rule, comma):
-        self.pop(1)
-
-    @match("RULE_DEF_MATCH_LIST", ")")
-    def rule_natch_list_finish(self, rule, par):
-        rule.type = "RULE_DEF"
-        self.pop(1)
-
-    @match("RULE_DEF", "BLOCK")
-    def rule_finish(self, rule, block):
-        self.pop(1)
-        rule.contents.append(block)
-        rule.type = "RULE_DEFINITION"
-
-    # =================================================
-    # === name groups
-    # =================================================
-
-    @match("NAME_GRP", "pipe", "name|word|string", priority=2)
-    def mane_grp_extend(self, grp, pipe, name):
-        self.pop(2)
-        grp.contents.append(name)
-
-    @match("name|word|string", ",|pipe|)", priority=-1)
-    def name_grp(self, name, sep):
-        self.pop(2)
-        self.push("NAME_GRP", [name])
-        self.push(sep)
-
-    # =================================================
-    # === indent blocks
-    # =================================================
-
-    @match("CASE|FUNC_CALL", "indent_decrease")
-    def block_end(self, call, indent):
-        self.pop(2)
-        self.push("BLOCK_END", [call])
-
-    @match("CASE|FUNC_CALL", "BLOCK_END", priority=0)
-    def block_end_expand(self, call, block):
-        self.pop(2)
-        block.contents.append(call)
-        self.push(block)
-
-    @match("indent_increase", "BLOCK_END", priority=1)
-    def block_finish(self, indent, block):
-        self.pop(2)
-        self.push("BLOCK", list(reversed(block.contents)))
-    # =================================================
-    # === case block
-    # =================================================
-
-
-    @match("case", "FUNC_CALL", "BLOCK")
-    def case(self, case, conditionnal, block):
-        self.pop(3)
-        self.push("CASE", [conditionnal, block])
-    # =================================================
-    # === operator calls
-    # =================================================
-
-    @match("FUNC_CALL", "and", "FUNC_CALL")
-    def op_and(self, func1, op, func2):
-        self.pop(3)
-        self.push("FUNC_CALL", [Token("name", "And"), Node("ARGS", [func1, func2])])
-
-    @match("FUNC_CALL", "or", "FUNC_CALL")
-    def op_or(self, func1, op, func2):
-        self.pop(3)
-        self.push("FUNC_CALL", [Token("name", "Or"), Node("ARGS", [func1, func2])])
-
-    @match("not", "FUNC_CALL")
-    def op_and(self, op, func1):
-        self.pop(2)
-        self.push("FUNC_CALL", [Token("name", "Not"), Node("ARGS", [func1])])
-
-    # =================================================
-    # === function calls
-    # =================================================
-
-    @match("word", "(")
-    def func_call_start(self, name, p):
-        self.pop(2)
-        self.push("FUNC_CALL_START", [name, Node("ARGS", [])])
-
-    @match("FUNC_CALL_START", "indent_increase|indent_decrease|inconsistent_indent")
-    def ignore_indent(self, call, indent):
-        self.pop(1)
-
-    @match("FUNC_CALL_START", ",")
-    def ignore_comma(self, func, separator):
-        self.pop(1)
-
-    @match("FUNC_CALL_START", "integer|NAME_GRP|FUNC_CALL", ",|)")
-    def add_func_arg(self, func, arg, separator):
-        self.pop(2)
-        func.contents[1].contents.append(arg)
-        self.push(separator)
-
-    @match("FUNC_CALL_START", ")")
-    def func_call_finish(self, func, par):
-        self.pop(1)
-        func.type = "FUNC_CALL"
-
-    # =================================================
-    # === Node Indexing
-    # =================================================
-
-    @match("INDEXES", ",|)")
-    def indexes_to_func(self, indexes, sep):
-        self.pop(2)
-        self.push("FUNC_CALL", [Token("name", "get_node"),
-                                Node("ARGS", indexes.contents)])
-        self.push(sep)
-
-    @match("[", "integer", "]")
-    def make_index(self, sq, n, sq1):
-        self.pop(3)
-        self.push("INDEXES", [n])
-
-    @match("INDEXES", "INDEXES")
-    def sub_index(self, i, j):
-        self.pop(1)
-        i.contents.append(j.contents[0])
-
-
-KG_BUILTINS = """
 #  ============================================
 #        Kilogrammar language builtins
 #  ============================================
@@ -740,27 +470,77 @@ def And(parser, matches, *args):
 def Not(parser, mathces, args):
     return not arg
 
-"""
 
-KG_BUILTINS_FUNC_LIST = [
-    "push",
-    "pop",
-    "node",
-    "pick_name",
-    "get_node",
-    "reverse",
-    "push_into",
-    "pop_from",
-    "set_name",
-    "is_name",
-    "look_ahead",
-    "Or",
-    "And",
-    "Not",
-]
+class ParserClass(Parser):
+    pass
+
+    @match({'whitespace'}, priority=0)
+    def rule0_ignore_whitespace(parser, *matches):
+        pop(parser, matches, 1)
+
+    @match({'ADD', 'SUB'}, {'*', '**', '/'}, {'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, priority=-1)
+    def rule1_math_priority(parser, *matches):
+        pop(parser, matches, 3)
+        push(parser, matches, get_node(parser, matches, 0, 1), get_node(parser, matches, 0, 0), get_node(parser, matches, 0, 2), get_node(parser, matches, 1), get_node(parser, matches, 2))
+
+    @match({'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, {'+', '-', '*', '/', '**'}, {'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, priority=-2)
+    def rule2_math(parser, *matches):
+        pop(parser, matches, 3)
+        push(parser, matches, node(parser, matches, pick_name(parser, matches, get_node(parser, matches, 1), ('+', '-', '*', '/', '**'), ('ADD', 'SUB', 'MUL', 'DIV', 'POW')), get_node(parser, matches, 1), get_node(parser, matches, 0), get_node(parser, matches, 2)))
+
+    @match({"("}, {'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, {")"}, priority=-3)
+    def rule3_parenthesis(parser, *matches):
+        pop(parser, matches, 3)
+        push(parser, matches, get_node(parser, matches, 1))
+
+    @match({'name'}, {'name'}, priority=-4)
+    def rule4_typed_name(parser, *matches):
+        pop(parser, matches, 2)
+        push(parser, matches, node(parser, matches, ('VAR_DECL',), get_node(parser, matches, 0), get_node(parser, matches, 1)))
+
+    @match({'name', 'VAR_DECL'}, {'='}, {'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, {'newline', ";", 'name', ")"}, priority=-5)
+    def rule5_assign(parser, *matches):
+        pop(parser, matches, 4)
+        push(parser, matches, node(parser, matches, ('ASSIGN',), get_node(parser, matches, 1), get_node(parser, matches, 0), get_node(parser, matches, 2)), get_node(parser, matches, 3))
+
+    @match({'ASSIGN', 'VAR_DECL', 'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, {'newline', ";", 'name'}, priority=-6)
+    def rule6_statement(parser, *matches):
+        pop(parser, matches, 2)
+        push(parser, matches, node(parser, matches, ('STATEMENT',), get_node(parser, matches, 0)), get_node(parser, matches, 1))
+
+    @match({'VAR_DECL'}, {"("}, priority=-7)
+    def rule7_func_begin(parser, *matches):
+        pop(parser, matches, 2)
+        push(parser, matches, node(parser, matches, ('FUNC_BEGIN',), get_node(parser, matches, 0), node(parser, matches, ('ARGS',))))
+
+    @match({'FUNC_BEGIN'}, {'name', 'VAR_DECL', 'ASSIGN'}, {",", ")"}, priority=-8)
+    def rule8_func_begin_expand(parser, *matches):
+        pop(parser, matches, 2)
+        push_into(parser, matches, get_node(parser, matches, 0, 1), get_node(parser, matches, 1))
+        if is_name(parser, matches, ('")"',), get_node(parser, matches, 3)):
+            push(parser, matches, get_node(parser, matches, 2))
+
+    @match({'FUNC_BEGIN'}, {","}, priority=-9)
+    def rule9_func_comma_remove(parser, *matches):
+        pop(parser, matches, 1)
+
+    @match({'FUNC_BEGIN'}, {")"}, {":"}, priority=-10)
+    def rule10_func_finish(parser, *matches):
+        pop(parser, matches, 2)
+        set_name(parser, matches, ('FUNCTION_DEFINITION',), get_node(parser, matches, 0))
+
+    @match({'name'}, {"("}, priority=-11)
+    def rule11_func_call_begin(parser, *matches):
+        pop(parser, matches, 2)
+        push(parser, matches, node(parser, matches, ('FUNC_CALL_BEGIN',), get_node(parser, matches, 0), node(parser, matches, ('ARGS',))))
+
+    @match({'FUNC_CALL_BEGIN'}, {'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'int', 'float', 'name', 'str'}, {")", ","}, priority=-12)
+    def rule12_func_call_expand(parser, *matches):
+        push_into(parser, matches, get_node(parser, matches, 0, 1), get_node(parser, matches, 1))
+        pop(parser, matches, 2)
+        push(parser, matches, get_node(parser, matches, 2))
 
 
-MAIN = r"""
 
 if __name__ == '__main__':
     import sys
@@ -789,167 +569,4 @@ if __name__ == '__main__':
     else:
         print("this script seems to not have syntax errors.")
 
-"""
 
-def validate(parser):
-    for node in reversed(parser.stack):
-        if  node.type not in\
-                {"indent_decrease",
-                 "indent_increase",
-                 "RULE_DEF",
-                 "TOKEN_DEFINITION",
-                 "KEYWORD",
-                 "RULE_DEFINITION"}:
-
-            while isinstance(node, Node): #find a leaf token
-                node = node.contents[-1]
-            panic(f"invalid syntax", node.line, node.col, parser.text)
-
-def parser_compile(parser):
-
-    rule_defs = []
-    token_defs = []
-    keyword_defs = []
-
-    def extract_high_level_parts(contents):
-        for node in contents:
-            if isinstance(node, Node):
-                extract_high_level_parts(node.contents)
-            if node == "RULE_DEFINITION":
-                rule_defs.append(node)
-            elif node == "TOKEN_DEFINITION":
-                token_defs.append(node)
-            elif node == "KEYWORD":
-                keyword_defs.append(node)
-
-    extract_high_level_parts(parser.stack)
-
-    final_lines = []
-
-    # recicling a usefull piece of code that cant be expressed directly using
-    # this language,
-    with open(__file__, "r") as myself:
-        myself.seek(0)
-        lines = myself.readlines()
-
-        start = 0
-        end = 0
-        for i, line in enumerate(lines):
-            if line.startswith("# TAG1: reutilize code start"):
-                start = i
-            elif line.startswith("# TAG1: reutilize code end"):
-                end = i
-
-        lines.append("    pass")
-        code = "".join(lines[1 + start:end])[0:-1]
-
-        code = code.replace("KiloTokenizer", "TokenizerClass")
-        final_lines.append(code)
-
-    for token_def in token_defs:
-        name = token_def.contents[0].contents
-        regex = token_def.contents[1].contents
-        final_lines.append(f'             ["{name}", r{regex}],')
-
-    for keyword_def in keyword_defs:
-        name = keyword_def.contents[0].contents[1:-1]
-        regex = re.escape(name)
-        final_lines.append(f'             ["{name}", "{regex}"],')
-    final_lines.append("             ]")
-
-    def make_match_list(match_list):
-        args = []
-        for name_grp in match_list.contents:
-            arg = []
-            for name in name_grp.contents:
-                if name == "string":
-                    arg.append(name.contents)
-                elif name in {"word", "name"}:
-                    arg.append(f"'{name.contents}'")
-            args.append("".join(("{", ", ".join(arg), "}")))
-        return ", ".join(args)
-
-    def make_block(block, indent=0, out_lines=None):
-        if out_lines is None:
-            out_lines = []
-
-        indent_str = "    " * indent
-
-        for node in block.contents:
-            if node.type == "FUNC_CALL":
-                out_lines.append(indent_str + make_func_call(node))
-            elif node.type == "CASE":
-                out_lines.append(indent_str + "if " + make_func_call(node.contents[0]) + ":")
-                make_block(node.contents[1], indent+1, out_lines=out_lines)
-        return out_lines
-
-    def make_func_call(node):
-        contents = node.contents
-        name_token = contents[0]
-        name = name_token.contents
-
-        if name not in KG_BUILTINS_FUNC_LIST:
-            panic(f"function does not exist: {name}",
-                    line=name_token.line,
-                    col=name_token.col,
-                    text=parser.text)
-
-        argumments = contents[1].contents
-        args = []
-
-        for arg in argumments:
-            if arg.type in "integer":
-                args.append(arg.contents)
-            elif arg.type == "FUNC_CALL":
-                args.append(make_func_call(arg))
-            elif arg.type == "NAME_GRP":
-                args.append(repr(tuple(node.contents for node in arg.contents)))
-
-        return f"{name}(parser, matches, {', '.join(args)})"
-
-    final_lines.extend([KG_BUILTINS])
-    final_lines.append("class ParserClass(Parser):")
-    final_lines.append("    pass")
-
-    final_lines.append("")
-
-    for i, rule in enumerate(rule_defs):
-        rule = rule.contents
-        func_name = rule[0].contents
-        block = rule[2]
-        match_args = make_match_list(rule[1])
-        final_lines.append(f"    @match({match_args}, priority={-i})")
-        final_lines.append(f"    def rule{i}_{func_name}(parser, *matches):")
-        final_lines.extend(make_block(block, indent=2))
-
-        final_lines.append("")
-
-    final_lines.append(MAIN)
-
-    return "\n".join(final_lines)
-
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        with open(sys.argv[1], "r") as f:
-            tok = KiloTokenizer(f.read() + "\n;")
-
-        if "-color" in sys.argv:
-            Color.enable()
-
-        if "-compile" in sys.argv:
-            parser = KiloParser(tok, preview=0)
-            validate(parser)
-            print(parser_compile(parser))
-
-        else:
-            if "-interactive" in sys.argv:
-                preview = 999999
-            else:
-                preview = 0
-
-            parser = KiloParser(tok, preview=preview)
-            parser.pretty_print(999999, 999999)
-            validate(parser)
